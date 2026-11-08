@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Fn, clamp, float, instanceIndex, int, ivec2, mix, normalize, storage, textureLoad, textureStore, texture, uniform, uint, vec2, vec3, vec4 } from 'three/tsl';
+import { compileKernels } from '../gpu/compileKernels.ts';
 import type { N } from '../gpu/tslOps.ts';
 
 export interface FieldLattice {
@@ -59,8 +60,8 @@ export class TerrainField {
     this.side.value = options.resolution;
     const side = options.resolution;
     this.height = storageTexture(side, THREE.RedFormat, THREE.FloatType, THREE.NearestFilter, 'TerrainHeight');
-    this.slope = storageTexture(side, THREE.RGFormat, THREE.HalfFloatType, THREE.LinearFilter, 'TerrainSlope');
-    this.density = storageTexture(side, THREE.RedFormat, THREE.HalfFloatType, THREE.LinearFilter, 'TerrainDensity');
+    this.slope = storageTexture(side, THREE.RGBAFormat, THREE.HalfFloatType, THREE.LinearFilter, 'TerrainSlope');
+    this.density = storageTexture(side, THREE.RGBAFormat, THREE.HalfFloatType, THREE.LinearFilter, 'TerrainDensity');
     this.masks = Array.from({ length: options.maskTextures }, (_, at) => storageTexture(side, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.LinearFilter, `TerrainMask${at}`));
     this.bakeKernel = this.buildBake(options.field).compute(side * side, [64]).setName('Terrain.Bake');
     this.slopeKernel = this.buildSlope().compute(side * side, [64]).setName('Terrain.Slope');
@@ -96,7 +97,7 @@ export class TerrainField {
   }
 
   async bake(renderer: THREE.WebGPURenderer): Promise<void> {
-    await (renderer as N).compileComputeAsync([this.bakeKernel, this.slopeKernel]);
+    await compileKernels(renderer, [this.bakeKernel, this.slopeKernel]);
     const texels = this.resolution * this.resolution;
     renderer.compute(this.bakeKernel, texels);
     renderer.compute(this.slopeKernel, texels);

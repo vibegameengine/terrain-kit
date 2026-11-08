@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { numberOps } from './ops.ts';
-import { continuousLevel, distanceSquaredToBox, patchSubdivides, snappedLocal, type LevelReach } from './lodSelection.ts';
+import { continuousLevel, levelOfDistance, distanceSquaredToBox, patchSubdivides, snappedLocal, type LevelReach } from './lodSelection.ts';
 
 const reach: LevelReach = { fineReach: 40, growth: 2 };
 const levelAt = (distance: number) => continuousLevel(numberOps, distance * distance, reach);
+
+describe('a uniform level rule', () => {
+  it('gives the same level at any distance', () => {
+    expect(levelOfDistance(numberOps, 1, { uniformLevel: 1 })).toBe(1);
+    expect(levelOfDistance(numberOps, 1e8, { uniformLevel: 1 })).toBe(1);
+  });
+
+  it('leaves a reach rule to grow with distance', () => {
+    expect(levelOfDistance(numberOps, 40 * 40, reach)).toBeCloseTo(1);
+  });
+});
 
 describe('continuous level', () => {
   it('is zero at the viewer and rises to one at the end of the fine reach', () => {

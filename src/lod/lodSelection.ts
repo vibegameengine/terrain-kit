@@ -5,6 +5,12 @@ export interface LevelReach {
   readonly growth: number;
 }
 
+export interface UniformLevel {
+  readonly uniformLevel: number;
+}
+
+export type LevelRule = LevelReach | UniformLevel;
+
 export type Point3<S> = readonly [S, S, S];
 
 export interface Box3<S> {
@@ -26,6 +32,10 @@ export function continuousLevel<S, B>(k: Ops<S, B>, distanceSquared: S, reach: {
   const inFineReach = k.minimum(stepped, k.constant(1));
   const beyond = k.maximum(stepped, k.constant(1));
   return k.add(inFineReach, k.divide(k.log2(beyond), k.log2(lift(k, reach.growth))));
+}
+
+export function levelOfDistance<S, B>(k: Ops<S, B>, distanceSquared: S, rule: LevelRule): S {
+  return 'uniformLevel' in rule ? k.constant(rule.uniformLevel) : continuousLevel(k, distanceSquared, rule);
 }
 
 export function distanceSquaredToBox<S, B>(k: Ops<S, B>, point: Point3<S | number>, box: Box3<S | number>): S {

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, cameraPosition, clamp, float, instanceIndex, normalLocal, positionGeometry, storage, vec2, vec3 } from 'three/tsl';
+import { Fn, clamp, float, instanceIndex, normalLocal, positionGeometry, storage, vec2, vec3 } from 'three/tsl';
 import { tslOps, type N } from '../gpu/tslOps.ts';
 import { continuousLevel, snappedLocal } from '../lod/lodSelection.ts';
 import { patchLevel, patchX, patchY, type TerrainQuadtree } from '../quadtree/terrainQuadtree.ts';
@@ -20,7 +20,7 @@ function patchGrid(segments: number): THREE.BufferGeometry {
 }
 
 export function terrainPosition(tree: TerrainQuadtree): N {
-  const { field, maxLevel, segments, reach, densityLevels, leafSize } = tree;
+  const { field, maxLevel, segments, reach, densityLevels, leafSize, bounds, viewOrigin } = tree;
   const leaves = storage(tree.leaves, 'uint', tree.capacity).toReadOnly();
   const { minX, minZ } = field.domain;
   const origin = vec2(minX, minZ);
@@ -31,11 +31,11 @@ export function terrainPosition(tree: TerrainQuadtree): N {
     const corner = vec2(float(patchX(packed)), float(patchY(packed))).mul(size).add(origin).toVar();
     const local = vec2(positionGeometry.x, positionGeometry.z).toVar();
     const placed = corner.add(local.mul(size)).toVar();
-    const toView = vec3(placed.x, field.heightAt(placed), placed.y).sub(cameraPosition).toVar();
+    const toView = vec3(placed.x, field.heightAt(placed), placed.y).sub(viewOrigin).toVar();
     const wanted = continuousLevel(tslOps, toView.dot(toView), reach).sub(field.densityAt(placed).mul(densityLevels));
     const levelsAbove = clamp(wanted, level, float(maxLevel)).floor().sub(level).toVar();
     const snapped = vec2(snappedLocal(tslOps, local.x, float(segments), levelsAbove), snappedLocal(tslOps, local.y, float(segments), levelsAbove)).toVar();
-    const world = corner.add(snapped.mul(size)).toVar();
+    const world = (corner.add(snapped.mul(size)) as N).clamp(vec2(bounds.minX, bounds.minZ), vec2(bounds.maxX, bounds.maxZ)).toVar();
     normalLocal.assign(field.normalAt(world));
     return vec3(world.x, field.heightAt(world), world.y);
   })();

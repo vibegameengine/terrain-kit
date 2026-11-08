@@ -40,7 +40,7 @@ export function latticeGeometry(heights: Float32Array, { columns, rows, span }: 
 }
 
 export async function createTerrainProxy(renderer: THREE.WebGPURenderer, field: TerrainField, material: THREE.Material, options: TerrainProxyOptions): Promise<THREE.Mesh> {
-  const heights = await field.readHeights(renderer, options.columns, options.rows, options.span);
+  const heights = await field.readHeights(renderer, options);
   const mesh = new THREE.Mesh(latticeGeometry(heights, options), material);
   mesh.name = 'Terrain proxy';
   mesh.castShadow = true;

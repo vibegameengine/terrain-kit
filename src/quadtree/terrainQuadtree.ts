@@ -3,6 +3,7 @@ import { Fn, If, Loop, atomicAdd, atomicLoad, atomicStore, float, instanceIndex,
 import type { TerrainField } from '../field/terrainField.ts';
 import { tslOps, type N } from '../gpu/tslOps.ts';
 import { continuousLevel, patchSubdivides, type LevelReach } from '../lod/lodSelection.ts';
+import { planeForCasters } from '../lod/castingPlanes.ts';
 import { levelBase, levelSide, patchCountOfTree } from '../lod/patchAddress.ts';
 
 export interface TerrainQuadtreeOptions {
@@ -12,6 +13,14 @@ export interface TerrainQuadtreeOptions {
   readonly segments: number;
   readonly densityLevels: number;
   readonly capacity: number;
+  readonly bounds?: TerrainBounds;
+}
+
+export interface TerrainBounds {
+  readonly minX: number;
+  readonly minZ: number;
+  readonly maxX: number;
+  readonly maxZ: number;
 }
 
 const KERNEL_GROUP = 64;
@@ -36,13 +45,14 @@ export class TerrainQuadtree {
   readonly densityLevels: number;
   readonly capacity: number;
   readonly leafSize: number;
+  readonly bounds: TerrainBounds;
   readonly leaves: THREE.StorageBufferAttribute;
   readonly drawArgs: THREE.IndirectStorageBufferAttribute;
-  private readonly bounds: THREE.StorageBufferAttribute;
+  private readonly patchBounds: THREE.StorageBufferAttribute;
   private readonly candidates: readonly THREE.StorageBufferAttribute[];
   private readonly counts: THREE.StorageBufferAttribute;
   private readonly boundsLevel = uniform(0, 'uint');
-  private readonly viewOrigin = uniform(new THREE.Vector3());
+  readonly viewOrigin = uniform(new THREE.Vector3());
   private readonly planes = uniformArray(Array.from({ length: 6 }, () => new THREE.Vector4()));
   private readonly bases: N;
   private readonly leafBoundsKernel: N;
@@ -62,8 +72,10 @@ export class TerrainQuadtree {
     this.densityLevels = options.densityLevels;
     this.capacity = options.capacity;
     this.leafSize = options.field.domain.size / 2 ** options.maxLevel;
+    const { minX, minZ, size } = options.field.domain;
+    this.bounds = options.bounds ?? { minX, minZ, maxX: minX + size, maxZ: minZ + size };
     const patches = patchCountOfTree(options.maxLevel);
-    this.bounds = new THREE.StorageBufferAttribute(new Float32Array(patches * 4), 4);
+    this.patchBounds = new THREE.StorageBufferAttribute(new Float32Array(patches * 4), 4);
     this.candidates = [0, 1].map(() => new THREE.StorageBufferAttribute(new Uint32Array(options.capacity), 1));
     this.leaves = new THREE.StorageBufferAttribute(new Uint32Array(options.capacity), 1);
     this.counts = new THREE.StorageBufferAttribute(new Uint32Array(3), 1);
@@ -78,7 +90,7 @@ export class TerrainQuadtree {
   }
 
   private boundsNode(): N {
-    return storage(this.bounds, 'vec4', this.bounds.count);
+    return storage(this.patchBounds, 'vec4', this.patchBounds.count);
   }
 
   private buildLeafBounds(): N {
@@ -93,9 +105,9 @@ export class TerrainQuadtree {
       const low = float(1e20).toVar();
       const high = float(-1e20).toVar();
       const most = float(0).toVar();
-      Loop({ start: int(-1), end: int(texelsPerLeaf + 1), type: 'int', condition: '<' }, ({ i }: N) => {
-        Loop({ start: int(-1), end: int(texelsPerLeaf + 1), type: 'int', condition: '<' }, ({ i: j }: N) => {
-          const texel = (first.add(ivec2(i, j)) as N).clamp(ivec2(0), ivec2(resolution - 1)).toVar();
+      Loop({ start: int(-1), end: int(texelsPerLeaf + 1), type: 'int', condition: '<', name: 'across' }, ({ across }: N) => {
+        Loop({ start: int(-1), end: int(texelsPerLeaf + 1), type: 'int', condition: '<', name: 'along' }, ({ along }: N) => {
+          const texel = (first.add(ivec2(across, along)) as N).clamp(ivec2(0), ivec2(resolution - 1)).toVar();
           const height = textureLoad(this.field.height, texel, int(0)).r.toVar();
           low.assign(min(low, height));
           high.assign(max(high, height));
@@ -146,7 +158,7 @@ export class TerrainQuadtree {
 
   private buildWalk(side: number): N {
     const counts = this.countsNode();
-    const bounds = storage(this.bounds, 'vec4', this.bounds.count).toReadOnly();
+    const bounds = storage(this.patchBounds, 'vec4', this.patchBounds.count).toReadOnly();
     const input = storage(this.candidates[side], 'uint', this.capacity).toReadOnly();
     const output = storage(this.candidates[1 - side], 'uint', this.capacity);
     const leaves = storage(this.leaves, 'uint', this.capacity);
@@ -170,7 +182,8 @@ export class TerrainQuadtree {
         const dy = this.viewOrigin.y.sub(nearestY);
         const dz = this.viewOrigin.z.sub(nearestZ);
         const nearestLevel = continuousLevel(tslOps, dx.mul(dx).add(dy.mul(dy)).add(dz.mul(dz)), this.reach);
-        const visible = this.boxVisible(vec2(lowX, lowZ), size, vec2(stored.x, stored.y)).toVar();
+        const insideBounds = lowX.lessThan(this.bounds.maxX).and(lowZ.lessThan(this.bounds.maxZ)).and(lowX.add(size).greaterThan(this.bounds.minX)).and(lowZ.add(size).greaterThan(this.bounds.minZ));
+        const visible = this.boxVisible(vec2(lowX, lowZ), size, vec2(stored.x, stored.y)).and(insideBounds).toVar();
         If(visible, () => {
           const subdivides = patchSubdivides(tslOps, { level: float(level), nearestLevel, densityBoost: stored.z.mul(this.densityLevels) });
           If(subdivides, () => {
@@ -219,7 +232,8 @@ export class TerrainQuadtree {
     })();
   }
 
-  bakeBounds(renderer: THREE.WebGPURenderer): void {
+  async bakeBounds(renderer: THREE.WebGPURenderer): Promise<void> {
+    await (renderer as N).compileComputeAsync([this.leafBoundsKernel, this.parentBoundsKernel, this.resetKernel, ...this.walkKernels, this.finishLevelKernel, this.publishKernel]);
     renderer.compute(this.leafBoundsKernel, levelSide(this.maxLevel, 0) ** 2);
     for (let level = 1; level <= this.maxLevel; level++) {
       this.boundsLevel.value = level;
@@ -227,11 +241,15 @@ export class TerrainQuadtree {
     }
   }
 
-  select(renderer: THREE.WebGPURenderer, camera: THREE.Camera): void {
+  select(renderer: THREE.WebGPURenderer, camera: THREE.Camera, toLight?: THREE.Vector3): void {
     this.viewOrigin.value.setFromMatrixPosition(camera.matrixWorld);
     this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.viewProjection, camera.coordinateSystem);
-    this.frustum.planes.forEach((plane, at) => (this.planes.array[at] as THREE.Vector4).set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant));
+    this.frustum.planes.forEach((plane, at) => {
+      const viewPlane = { x: plane.normal.x, y: plane.normal.y, z: plane.normal.z, w: plane.constant };
+      const { x, y, z, w } = toLight ? planeForCasters(viewPlane, toLight) : viewPlane;
+      (this.planes.array[at] as THREE.Vector4).set(x, y, z, w);
+    });
     renderer.compute(this.resetKernel);
     for (let walked = 0; walked <= this.maxLevel; walked++) {
       renderer.compute(this.walkKernels[walked & 1], this.capacity);

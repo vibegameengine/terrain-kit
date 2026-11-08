@@ -1,6 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { Fn, clamp, float, instanceIndex, int, ivec2, mix, normalize, textureLoad, textureStore, texture, uniform, uint, vec2, vec3, vec4 } from 'three/tsl';
+import { Fn, clamp, float, instanceIndex, int, ivec2, mix, normalize, storage, textureLoad, textureStore, texture, uniform, uint, vec2, vec3, vec4 } from 'three/tsl';
 import type { N } from '../gpu/tslOps.ts';
+
+export interface FieldLattice {
+  readonly columns: number;
+  readonly rows: number;
+  readonly span: { readonly minX: number; readonly minZ: number; readonly width: number; readonly depth: number };
+}
 
 export interface TerrainDomain {
   readonly minX: number;
@@ -89,10 +95,17 @@ export class TerrainField {
     })();
   }
 
-  bake(renderer: THREE.WebGPURenderer): void {
+  async bake(renderer: THREE.WebGPURenderer): Promise<void> {
+    await (renderer as N).compileComputeAsync([this.bakeKernel, this.slopeKernel]);
     const texels = this.resolution * this.resolution;
     renderer.compute(this.bakeKernel, texels);
     renderer.compute(this.slopeKernel, texels);
+  }
+
+  dispose(): void {
+    this.bakeKernel.dispose();
+    this.slopeKernel.dispose();
+    for (const made of [this.height, this.slope, this.density, ...this.masks]) made.dispose();
   }
 
   private uvOf(xz: N): N {
@@ -121,9 +134,16 @@ export class TerrainField {
     return texture(this.masks[index], this.uvOf(xz));
   }
 
-  async readHeights(renderer: THREE.WebGPURenderer, columns: number, rows: number, spans: { minX: number; minZ: number; width: number; depth: number }): Promise<Float32Array> {
+  readHeights(renderer: THREE.WebGPURenderer, lattice: FieldLattice): Promise<Float32Array> {
+    return this.readLattice(renderer, lattice, (xz) => this.heightAt(xz));
+  }
+
+  readMask(renderer: THREE.WebGPURenderer, index: number, channel: number, lattice: FieldLattice): Promise<Float32Array> {
+    return this.readLattice(renderer, lattice, (xz) => (texture(this.masks[index], this.uvOf(xz)) as N).level(0).element(int(channel)));
+  }
+
+  private async readLattice(renderer: THREE.WebGPURenderer, { columns, rows, span: spans }: FieldLattice, valueAt: (xz: N) => N): Promise<Float32Array> {
     const output = new THREE.StorageBufferAttribute(new Float32Array(columns * rows), 1);
-    const { storage } = await import('three/tsl');
     const target = storage(output, 'float', columns * rows);
     const across = uint(columns);
     const kernel = Fn(() => {
@@ -132,7 +152,7 @@ export class TerrainField {
       const row = float(i.div(across)).div(float(Math.max(1, rows - 1)));
       const x = column.mul(spans.width).add(spans.minX);
       const z = row.mul(spans.depth).add(spans.minZ);
-      target.element(i).assign(this.heightAt(vec2(x, z)));
+      target.element(i).assign(valueAt(vec2(x, z)));
     })().compute(columns * rows, [64]).setName('Terrain.ReadHeights');
     renderer.compute(kernel, columns * rows);
     const bytes = await renderer.getArrayBufferAsync(output);

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { TerrainField } from '../field/terrainField.ts';
+import { STATIC_MOBILITY } from './terrainMesh.ts';
 
 export interface TerrainProxySpan {
   readonly minX: number;
@@ -47,5 +48,6 @@ export async function createTerrainProxy(renderer: THREE.WebGPURenderer, field: 
   mesh.receiveShadow = true;
   mesh.layers.set(options.layer);
   mesh.userData.clusterLod = false;
+  mesh.userData.mobility = STATIC_MOBILITY;
   return mesh;
 }

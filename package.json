@@ -9,15 +9,29 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./r3f": "./src/r3f.ts"
   },
   "types": "./src/index.ts",
   "peerDependencies": {
+    "@vibegameengine/react-three-fiber": ">=9.6.0-0",
+    "react": ">=19.0.0",
     "three": ">=0.185.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@vibegameengine/react-three-fiber": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
     "@types/three": "^0.185.4",
+    "@vibegameengine/react-three-fiber": "^9.6.1-vibegame.1",
+    "react": "^19.2.4",
     "three": "^0.185.1",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0"

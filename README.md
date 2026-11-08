@@ -9,6 +9,8 @@ GPU-driven terrain for three.js WebGPU.
 
 - Shadow passes use the same surface: the level of a vertex comes from the view, never from the camera drawing it. `terrainShadowCaster` hands a virtual shadow map the patch list and the vertex program.
 
+In React, `<GpuTerrain>` from `@vibegameengine/terrain-kit/r3f` builds and mounts it; `createTerrain` does all the computing outside React, on the GPU. Terrain is static by default.
+
 Needs `three` 0.185 or newer with `WebGPURenderer`. Kernels are compiled ahead of use when the renderer offers `compileComputeAsync`, and on first dispatch otherwise.
 
 MIT licensed.

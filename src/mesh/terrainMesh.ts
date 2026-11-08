@@ -4,6 +4,8 @@ import { tslOps, type N } from '../gpu/tslOps.ts';
 import { levelOfDistance, snappedLocal } from '../lod/lodSelection.ts';
 import { patchLevel, patchX, patchY, type TerrainQuadtree } from '../quadtree/terrainQuadtree.ts';
 
+export const STATIC_MOBILITY = 0;
+
 export interface HeightfieldCasterSource {
   readonly geometry: THREE.BufferGeometry;
   readonly capacity: number;
@@ -69,6 +71,7 @@ export function createTerrainMesh(tree: TerrainQuadtree, material: THREE.NodeMat
   Object.assign(mesh, { drawsEveryFrame: true });
   mesh.userData.giExclude = true;
   mesh.userData.clusterLod = false;
+  mesh.userData.mobility = STATIC_MOBILITY;
   return mesh;
 }
 

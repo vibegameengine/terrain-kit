@@ -6,4 +6,5 @@ export { TerrainField, type FieldFunction, type FieldLattice, type FieldSample, 
 export { TerrainQuadtree, type PatchList, type TerrainBounds, type TerrainQuadtreeOptions } from './quadtree/terrainQuadtree.ts';
 export { createTerrainMesh, terrainShadowCaster, terrainWorldPosition, type HeightfieldCasterSource } from './mesh/terrainMesh.ts';
 export { planeForCasters, type Plane } from './lod/castingPlanes.ts';
+export { createTerrain, type Terrain, type TerrainOptions, type TerrainProxyLattice } from './terrain.ts';
 export { createTerrainProxy, latticeGeometry, type TerrainProxyOptions, type TerrainProxySpan } from './mesh/terrainProxy.ts';

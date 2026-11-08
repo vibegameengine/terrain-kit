@@ -1,0 +1,24 @@
+{
+  "name": "@vibegameengine/terrain-kit",
+  "version": "0.1.0",
+  "description": "GPU-driven terrain for three.js WebGPU: heightfield baked by compute, a quadtree selected on the GPU, mesh density that follows a map.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vibegameengine/terrain-kit.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
